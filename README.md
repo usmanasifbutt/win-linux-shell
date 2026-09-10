@@ -21,42 +21,73 @@ already know — in one command, reproducible on every machine you touch.
 
 ## Convert a boring shell into a productive one
 
-Run this in **Git Bash** on Windows:
+Run one of these in **Git Bash** on Windows, then close every terminal window and
+open a new **Windows Terminal** tab.
+
+### Option A — one line, no clone (recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/usmanasifbutt/win-linux-shell/main/bootstrap.sh | bash
+```
+
+`bootstrap.sh` checks the repo out to `~/.win-linux-shell` and runs `setup.sh`.
+Pass options after `-s --`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/usmanasifbutt/win-linux-shell/main/bootstrap.sh | bash -s -- --theme atomic --no-terminal
+```
+
+Prefer to read it first (piping to a shell always deserves a look):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/usmanasifbutt/win-linux-shell/main/bootstrap.sh -o bootstrap.sh
+less bootstrap.sh && bash bootstrap.sh
+```
+
+Overrides: `WLS_DIR` (install location, default `~/.win-linux-shell`),
+`WLS_REF` (branch or tag, default `main`).
+
+### Option B — clone
 
 ```bash
 git clone https://github.com/usmanasifbutt/win-linux-shell.git && cd win-linux-shell && bash setup.sh
 ```
 
-Close every terminal window, open a new **Windows Terminal** tab — done.
-
-### On another machine
-
-Same command. To pull the latest version and re-apply:
+### Option C — tarball, no git
 
 ```bash
-cd win-linux-shell && git pull && bash setup.sh
+curl -L https://github.com/usmanasifbutt/win-linux-shell/archive/refs/tags/v1.0.1.tar.gz | tar xz
+cd win-linux-shell-1.0.1 && bash setup.sh
 ```
 
-### From the released package (no git)
+### Updating later
 
-```bash
-curl -L https://github.com/usmanasifbutt/win-linux-shell/archive/refs/tags/v1.0.0.tar.gz | tar xz
-cd win-linux-shell-1.0.0 && bash setup.sh
-```
+| Installed with | Update command |
+|----------------|----------------|
+| Option A | `curl -fsSL https://raw.githubusercontent.com/usmanasifbutt/win-linux-shell/main/bootstrap.sh \| bash` |
+| Option B | `cd win-linux-shell && git pull && bash setup.sh` |
+| any | `git -C ~/.win-linux-shell pull` then `reload` in PowerShell |
 
 ---
 
-## What `setup.sh` does
+## What runs
 
-`setup.sh` is the **only** entry point. It finds a PowerShell interpreter and
-hands off to `powershell/install.ps1`, which runs four idempotent steps:
+- **`bootstrap.sh`** (Option A only) — checks the repo out to `~/.win-linux-shell`
+  (git clone, or tarball if git is absent), then execs `setup.sh`. Nothing else.
+- **`setup.sh`** — the single entry point for a local checkout. Finds a
+  PowerShell interpreter and hands off to `powershell/install.ps1`.
+- **`powershell/install.ps1`** — four idempotent steps:
 
 | # | Step | Notes |
 |---|------|-------|
 | 1 | `winget install Microsoft.PowerShell` | installs / upgrades PowerShell 7 |
-| 2 | Windows Terminal `defaultProfile` → PowerShell 7 | patches `settings.json`, keeps a timestamped backup |
+| 2 | Windows Terminal `defaultProfile` → PowerShell 7 | edits only the `defaultProfile` value in `settings.json` (comments and formatting preserved); timestamped backup first |
 | 3 | `winget install JanDeDobbeleer.OhMyPosh` | only if `oh-my-posh` is missing |
-| 4 | wire `powershell/profile.ps1` into `$PROFILE` | adds one managed block to `Documents\PowerShell\profile.ps1` |
+| 4 | wire `powershell/profile.ps1` into `$PROFILE` | one managed block in `Documents\PowerShell\profile.ps1`; backed up before any edit |
+
+`--theme` / `--gnu-bin` values are validated (`A–Z a–z 0–9 space . _ : \ / -`)
+before being written into your `$PROFILE`. The installer never elevates, never
+deletes files, and only writes under your user profile.
 
 ### Options
 

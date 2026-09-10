@@ -19,11 +19,11 @@ param(
     [string] $GnuBin,
     [switch] $SkipPowerShellUpdate,
     [switch] $SkipTerminal,
-    [switch] $SkipOhMyPosh
+    [switch] $SkipOhMyPosh,
+    [switch] $SkipProfile
 )
 
 $ErrorActionPreference = 'Stop'
-$RepoRoot   = Split-Path $PSScriptRoot -Parent
 $ProfileSrc = Join-Path $PSScriptRoot 'profile.ps1'
 $PwshGuid   = '{574e775e-4f2a-5b96-ac1e-a2962a402336}'   # Windows.Terminal.PowershellCore
 
@@ -48,8 +48,18 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
         & $pwshExe.Source -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath @PSBoundParameters
         exit $LASTEXITCODE
     }
-    Write-Warning 'pwsh 7 unavailable; continuing under Windows PowerShell 5.1 (Terminal JSON step may be skipped).'
+    Write-Warning 'pwsh 7 unavailable; continuing under Windows PowerShell 5.1.'
 }
+
+# Values that get written verbatim into $PROFILE must not be able to break out of
+# the single-quoted strings we emit, or inject code that runs on every shell start.
+function Assert-Safe($name, $value) {
+    if ($value -and $value -notmatch '^[A-Za-z0-9 ._:\\/-]+$') {
+        throw "Unsafe -$name value '$value'. Allowed: letters, digits, space, and . _ : \ / -"
+    }
+}
+Assert-Safe 'Theme'  $Theme
+Assert-Safe 'GnuBin' $GnuBin
 
 function Invoke-Winget([string[]] $Args) {
     if (-not (Have 'winget')) {
@@ -105,24 +115,31 @@ if ($SkipTerminal) {
     )
     $settings = $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
 
-    if ($PSVersionTable.PSVersion.Major -lt 7) {
-        Warn 'need PowerShell 7 to patch settings.json safely. Set it manually:'
-        Warn "  `"defaultProfile`": `"$PwshGuid`","
-    } elseif (-not $settings) {
+    if (-not $settings) {
         Warn 'Windows Terminal settings.json not found. Set it manually:'
         Warn '  Windows Terminal -> Settings (Ctrl+,) -> Startup -> Default profile -> PowerShell'
         Warn "  or add this to settings.json:  `"defaultProfile`": `"$PwshGuid`","
     } else {
         try {
-            $json = Get-Content -LiteralPath $settings -Raw
-            $obj  = $json | ConvertFrom-Json -AsHashtable
-            if ($obj.defaultProfile -eq $PwshGuid) {
+            # Targeted string edit -- preserves // comments, key order and formatting
+            # that a ConvertFrom-Json / ConvertTo-Json round-trip would silently drop.
+            $text = Get-Content -LiteralPath $settings -Raw
+            $rx   = [regex]'("defaultProfile"\s*:\s*)"(.*?)"'
+            $m    = $rx.Match($text)
+            if ($m.Success -and $m.Groups[2].Value -eq $PwshGuid) {
                 Ok "already set ($settings)"
             } else {
                 $bak = "$settings.bak-$(Get-Date -Format yyyyMMdd-HHmmss)"
                 Copy-Item -LiteralPath $settings -Destination $bak -Force
-                $obj.defaultProfile = $PwshGuid
-                ($obj | ConvertTo-Json -Depth 32) | Set-Content -LiteralPath $settings -Encoding utf8
+                if ($m.Success) {
+                    $new = $rx.Replace($text, "`${1}`"$PwshGuid`"", 1)
+                } else {
+                    # no key present -- insert right after the first opening brace
+                    $i = $text.IndexOf('{')
+                    if ($i -lt 0) { throw 'not a JSON object' }
+                    $new = $text.Substring(0, $i + 1) + "`r`n    `"defaultProfile`": `"$PwshGuid`"," + $text.Substring($i + 1)
+                }
+                [System.IO.File]::WriteAllText($settings, $new, (New-Object System.Text.UTF8Encoding $false))
                 Ok "updated ($settings)"
                 Ok "backup  $bak"
             }
@@ -135,29 +152,51 @@ if ($SkipTerminal) {
 
 # ---------------------------------------------------------------------------
 Step "Wire profile.ps1 into `$PROFILE"
+if ($SkipProfile) {
+    Warn 'skipped (-SkipProfile)'
+    return
+}
 $target = $PROFILE.CurrentUserAllHosts        # ...\Documents\PowerShell\profile.ps1
 $dir    = Split-Path $target -Parent
 if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
 
 $begin = '# >>> win-linux-shell >>>'
 $end   = '# <<< win-linux-shell <<<'
+# Escape single quotes so nothing can break out of the strings below (values are
+# also validated by Assert-Safe above -- this is belt and braces).
+$q = { param($s) $s -replace "'", "''" }
+$themeLit = & $q $Theme
+$gnuLine  = if ($GnuBin) { "`$env:WIN_LINUX_SHELL_GNUBIN = '$(& $q $GnuBin)'`r`n" } else { '' }
+$srcLit   = & $q $ProfileSrc
 $block = @"
 $begin
 # Managed by win-linux-shell installer -- edit powershell/profile.ps1 in the repo instead.
-`$env:WIN_LINUX_SHELL_THEME = '$Theme'
-$(if ($GnuBin) { "`$env:WIN_LINUX_SHELL_GNUBIN = '$GnuBin'`n" })`$__wls = '$ProfileSrc'
+`$env:WIN_LINUX_SHELL_THEME = '$themeLit'
+$gnuLine`$__wls = '$srcLit'
 if (Test-Path -LiteralPath `$__wls) { . `$__wls }
 Remove-Variable __wls -ErrorAction Ignore
 $end
 "@
 
 $existing = if (Test-Path -LiteralPath $target) { Get-Content -LiteralPath $target -Raw } else { '' }
-if ($existing.Contains($begin) -and $existing.Contains($end)) {
-    $pre  = $existing.Substring(0, $existing.IndexOf($begin)).TrimEnd()
-    $post = $existing.Substring($existing.IndexOf($end) + $end.Length)
+$bi = $existing.IndexOf($begin)
+$ei = $existing.IndexOf($end)
+if ($bi -ge 0 -and $ei -gt $bi) {
+    if ($existing.Trim()) {
+        Copy-Item -LiteralPath $target -Destination "$target.bak-$(Get-Date -Format yyyyMMdd-HHmmss)" -Force
+    }
+    $pre  = $existing.Substring(0, $bi).TrimEnd()
+    $post = $existing.Substring($ei + $end.Length)
     Set-Content -LiteralPath $target -Value ($pre + "`r`n" + $block + $post) -Encoding utf8
     Ok "refreshed block in $target"
+} elseif ($bi -ge 0 -or $ei -ge 0) {
+    Warn "found a malformed win-linux-shell block in $target -- leaving it alone and appending a fresh one."
+    Warn 'Remove the old markers by hand when convenient.'
+    Add-Content -LiteralPath $target -Value ("`r`n" + $block) -Encoding utf8
 } else {
+    if ($existing.Trim()) {
+        Copy-Item -LiteralPath $target -Destination "$target.bak-$(Get-Date -Format yyyyMMdd-HHmmss)" -Force
+    }
     Add-Content -LiteralPath $target -Value ("`r`n" + $block) -Encoding utf8
     Ok "added block to $target"
 }

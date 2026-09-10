@@ -12,9 +12,11 @@
 #
 # Options:
 #   --theme <name|path>   oh-my-posh theme (default: slim)
+#   --gnu-bin <path>      force the GNU coreutils dir (else auto-detected from Git)
 #   --no-update           don't install/upgrade PowerShell 7 via winget
 #   --no-terminal         don't touch Windows Terminal settings.json
 #   --no-omp              don't install oh-my-posh
+#   --no-profile          don't touch your PowerShell $PROFILE
 #   -h, --help            show this help
 set -euo pipefail
 
@@ -26,10 +28,13 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --theme)       THEME="${2:?--theme needs a value}"; shift 2 ;;
     --theme=*)     THEME="${1#*=}"; shift ;;
+    --gnu-bin)     PS_ARGS+=("-GnuBin" "${2:?--gnu-bin needs a value}"); shift 2 ;;
+    --gnu-bin=*)   PS_ARGS+=("-GnuBin" "${1#*=}"); shift ;;
     --no-update)   PS_ARGS+=("-SkipPowerShellUpdate"); shift ;;
     --no-terminal) PS_ARGS+=("-SkipTerminal"); shift ;;
     --no-omp)      PS_ARGS+=("-SkipOhMyPosh"); shift ;;
-    -h|--help)     sed -n '2,18p' "$0" | sed 's/^#\{0,1\} \{0,1\}//'; exit 0 ;;
+    --no-profile)  PS_ARGS+=("-SkipProfile"); shift ;;
+    -h|--help)     sed -n '2,20p' "$0" | sed 's/^#\{0,1\} \{0,1\}//'; exit 0 ;;
     *) echo "win-linux-shell: unknown option '$1' (try --help)" >&2; exit 2 ;;
   esac
 done
