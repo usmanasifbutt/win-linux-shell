@@ -1,0 +1,11 @@
+# editor / OS cruft
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# local backups the installer makes
+*.bak-*
+settings.json.bak-*
