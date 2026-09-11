@@ -6,11 +6,15 @@
 
 .DESCRIPTION
     1. Updates / installs PowerShell 7 (winget).
-    2. Points Windows Terminal's defaultProfile at PowerShell 7.
+    2. Installs Git for Windows (winget) if missing -- it's what supplies the
+       GNU coreutils profile.ps1 unmasks, so nothing else here works without it.
     3. Installs oh-my-posh (winget) if missing.
-    4. Wires powershell/profile.ps1 into $PROFILE.CurrentUserAllHosts.
+    4. Points Windows Terminal's defaultProfile at PowerShell 7.
+    5. Wires powershell/profile.ps1 into $PROFILE.CurrentUserAllHosts.
 
-    Every step is idempotent and re-runnable on any machine.
+    Every step is idempotent and re-runnable on any machine. Needs only stock
+    Windows PowerShell 5.1 to start -- see ../bootstrap.ps1 for a route in that
+    doesn't require git or bash to already be installed.
 #>
 [CmdletBinding()]
 param(
@@ -18,6 +22,7 @@ param(
     [string] $TerminalSettings,
     [string] $GnuBin,
     [switch] $SkipPowerShellUpdate,
+    [switch] $SkipGit,
     [switch] $SkipTerminal,
     [switch] $SkipOhMyPosh,
     [switch] $SkipProfile
@@ -32,6 +37,10 @@ function Ok($m)   { Write-Host "    $m"   -ForegroundColor Green }
 function Warn($m) { Write-Host "    $m"   -ForegroundColor Yellow }
 
 function Have($name) { [bool](Get-Command $name -CommandType Application -ErrorAction Ignore) }
+function Refresh-Path {
+    $env:PATH = [Environment]::GetEnvironmentVariable('PATH','Machine') + ';' +
+                [Environment]::GetEnvironmentVariable('PATH','User')
+}
 
 # Re-launch under PowerShell 7 if we were started by Windows PowerShell 5.1
 # (setup.sh falls back to powershell.exe when pwsh is not yet installed).
@@ -40,8 +49,7 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
         Write-Host '==> Bootstrapping PowerShell 7 ...' -ForegroundColor Cyan
         & winget install --id Microsoft.PowerShell --exact --source winget `
             --accept-package-agreements --accept-source-agreements --disable-interactivity
-        $env:PATH = [Environment]::GetEnvironmentVariable('PATH','Machine') + ';' +
-                    [Environment]::GetEnvironmentVariable('PATH','User')
+        Refresh-Path
     }
     $pwshExe = Get-Command pwsh -CommandType Application -ErrorAction Ignore | Select-Object -First 1
     if ($pwshExe) {
@@ -86,6 +94,23 @@ if ($SkipPowerShellUpdate) {
 }
 
 # ---------------------------------------------------------------------------
+Step 'Git for Windows'
+# This is the actual source of the GNU coreutils profile.ps1 unmasks (rm, cp,
+# grep, sed, nano, ...) -- without it the "Linux commands" half of this repo
+# is a no-op, so it gets installed unless explicitly skipped.
+if ($SkipGit) {
+    Warn 'skipped (-SkipGit)'
+} elseif (Have 'git') {
+    Ok "already installed ($(& git --version))"
+} else {
+    [void](Invoke-Winget @('install','--id','Git.Git','--exact','--source','winget',
+        '--accept-package-agreements','--accept-source-agreements','--disable-interactivity'))
+    Refresh-Path
+    if (Have 'git') { Ok "installed ($(& git --version))" }
+    else { Warn 'installed, but not visible yet -- it will work in a new terminal.' }
+}
+
+# ---------------------------------------------------------------------------
 Step 'oh-my-posh'
 if ($SkipOhMyPosh) {
     Warn 'skipped (-SkipOhMyPosh)'
@@ -94,9 +119,7 @@ if ($SkipOhMyPosh) {
 } else {
     [void](Invoke-Winget @('install','--id','JanDeDobbeleer.OhMyPosh','--exact','--source','winget',
         '--accept-package-agreements','--accept-source-agreements','--disable-interactivity'))
-    # refresh PATH for the rest of this run
-    $env:PATH = [Environment]::GetEnvironmentVariable('PATH','Machine') + ';' +
-                [Environment]::GetEnvironmentVariable('PATH','User')
+    Refresh-Path
     if (Have 'oh-my-posh') { Ok "installed ($(& oh-my-posh version))" }
     else { Warn 'installed, but not visible yet -- it will work in a new terminal.' }
 }

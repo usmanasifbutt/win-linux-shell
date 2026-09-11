@@ -14,6 +14,7 @@
 #   --theme <name|path>   oh-my-posh theme (default: slim)
 #   --gnu-bin <path>      force the GNU coreutils dir (else auto-detected from Git)
 #   --no-update           don't install/upgrade PowerShell 7 via winget
+#   --no-git              don't install Git for Windows
 #   --no-terminal         don't touch Windows Terminal settings.json
 #   --no-omp              don't install oh-my-posh
 #   --no-profile          don't touch your PowerShell $PROFILE
@@ -31,10 +32,11 @@ while [ $# -gt 0 ]; do
     --gnu-bin)     PS_ARGS+=("-GnuBin" "${2:?--gnu-bin needs a value}"); shift 2 ;;
     --gnu-bin=*)   PS_ARGS+=("-GnuBin" "${1#*=}"); shift ;;
     --no-update)   PS_ARGS+=("-SkipPowerShellUpdate"); shift ;;
+    --no-git)      PS_ARGS+=("-SkipGit"); shift ;;
     --no-terminal) PS_ARGS+=("-SkipTerminal"); shift ;;
     --no-omp)      PS_ARGS+=("-SkipOhMyPosh"); shift ;;
     --no-profile)  PS_ARGS+=("-SkipProfile"); shift ;;
-    -h|--help)     sed -n '2,20p' "$0" | sed 's/^#\{0,1\} \{0,1\}//'; exit 0 ;;
+    -h|--help)     sed -n '2,21p' "$0" | sed 's/^#\{0,1\} \{0,1\}//'; exit 0 ;;
     *) echo "win-linux-shell: unknown option '$1' (try --help)" >&2; exit 2 ;;
   esac
 done

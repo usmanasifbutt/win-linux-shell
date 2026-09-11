@@ -5,7 +5,8 @@ already know — in one command, reproducible on every machine you touch.
 
 - **GNU coreutils on `PATH`** — real `rm -rf`, `cp -r`, `mv`, `grep`, `sed`,
   `awk`, `find`, `head`, `tail`, `wc`, `du`, `df`, `less`, `diff`, `xargs`,
-  `nano`, `ssh` … (they ship with Git for Windows; this just unmasks them)
+  `nano`, `ssh` … (they ship with Git for Windows, which gets installed for
+  you if it's missing; this just unmasks the tools already on your machine)
 - **`curl`** resolves to the real `curl.exe`, not PowerShell's `Invoke-WebRequest` alias
 - **oh-my-posh** prompt — colourful and interactive, using the builtin **minimal**
   theme (`slim`)
@@ -21,81 +22,122 @@ already know — in one command, reproducible on every machine you touch.
 
 ## Convert a boring shell into a productive one
 
-Run one of these in **Git Bash** on Windows, then close every terminal window and
-open a new **Windows Terminal** tab.
+### Option A — fresh machine, nothing installed yet (recommended)
 
-### Option A — one line, no clone (recommended)
+A stock Windows box has **PowerShell but no `bash`, no `git`, and `curl` is a
+PowerShell alias for `Invoke-WebRequest`** (not the real thing) — so a
+`curl | bash` one-liner does not work out of the box. Use PowerShell's own
+downloader instead, in **Windows PowerShell or PowerShell 7** (`Win+X` → *Terminal*):
+
+```powershell
+irm https://raw.githubusercontent.com/usmanasifbutt/win-linux-shell/main/bootstrap.ps1 | iex
+```
+
+`irm` (`Invoke-RestMethod`) and `iex` (`Invoke-Expression`) are built into every
+Windows PowerShell since 3.0 — nothing to install first, and no execution-policy
+prompt, because the script is evaluated in-memory rather than run as a file.
+`bootstrap.ps1` fetches the repo to `~\.win-linux-shell` (via `git` if present,
+otherwise a plain zip download — no git needed even for this step) and hands
+off to `powershell/install.ps1`, which **installs Git for Windows** among other
+things. After it, `bash` and Option B below work too.
+
+To pass options through a piped run:
+
+```powershell
+$s = irm https://raw.githubusercontent.com/usmanasifbutt/win-linux-shell/main/bootstrap.ps1
+& ([scriptblock]::Create($s)) -Theme atomic -SkipTerminal
+```
+
+Or download first and read it before running (recommended — piping to a shell,
+`bash` or PowerShell, always deserves a look first):
+
+```powershell
+iwr https://raw.githubusercontent.com/usmanasifbutt/win-linux-shell/main/bootstrap.ps1 -OutFile bootstrap.ps1
+notepad bootstrap.ps1
+powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1 -Theme atomic
+```
+
+Overrides: `-WlsDir` (install location, default `~\.win-linux-shell`), `-Ref`
+(branch or tag, default `main`), `-Theme`, `-GnuBin`, and the same `-Skip*`
+switches as `install.ps1` (see [Options](#options)).
+
+### Option B — already have Git Bash
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/usmanasifbutt/win-linux-shell/main/bootstrap.sh | bash
 ```
 
-`bootstrap.sh` checks the repo out to `~/.win-linux-shell` and runs `setup.sh`.
-Pass options after `-s --`:
+Same idea as Option A, bash-flavoured: `bootstrap.sh` checks the repo out to
+`~/.win-linux-shell` and runs `setup.sh`. Pass options after `-s --`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/usmanasifbutt/win-linux-shell/main/bootstrap.sh | bash -s -- --theme atomic --no-terminal
 ```
 
-Prefer to read it first (piping to a shell always deserves a look):
+Overrides: `WLS_DIR`, `WLS_REF`. Close every terminal window and open a new
+**Windows Terminal** tab once either option finishes.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/usmanasifbutt/win-linux-shell/main/bootstrap.sh -o bootstrap.sh
-less bootstrap.sh && bash bootstrap.sh
-```
-
-Overrides: `WLS_DIR` (install location, default `~/.win-linux-shell`),
-`WLS_REF` (branch or tag, default `main`).
-
-### Option B — clone
+### Option C — clone
 
 ```bash
 git clone https://github.com/usmanasifbutt/win-linux-shell.git && cd win-linux-shell && bash setup.sh
 ```
 
-### Option C — tarball, no git
+### Option D — tarball, no git
 
 ```bash
-curl -L https://github.com/usmanasifbutt/win-linux-shell/archive/refs/tags/v1.0.1.tar.gz | tar xz
-cd win-linux-shell-1.0.1 && bash setup.sh
+curl -L https://github.com/usmanasifbutt/win-linux-shell/archive/refs/tags/v1.0.2.tar.gz | tar xz
+cd win-linux-shell-1.0.2 && bash setup.sh
 ```
 
 ### Updating later
 
 | Installed with | Update command |
 |----------------|----------------|
-| Option A | `curl -fsSL https://raw.githubusercontent.com/usmanasifbutt/win-linux-shell/main/bootstrap.sh \| bash` |
-| Option B | `cd win-linux-shell && git pull && bash setup.sh` |
+| Option A | `irm https://raw.githubusercontent.com/usmanasifbutt/win-linux-shell/main/bootstrap.ps1 \| iex` |
+| Option B | `curl -fsSL https://raw.githubusercontent.com/usmanasifbutt/win-linux-shell/main/bootstrap.sh \| bash` |
+| Option C | `cd win-linux-shell && git pull && bash setup.sh` |
 | any | `git -C ~/.win-linux-shell pull` then `reload` in PowerShell |
 
 ---
 
 ## What runs
 
-- **`bootstrap.sh`** (Option A only) — checks the repo out to `~/.win-linux-shell`
-  (git clone, or tarball if git is absent), then execs `setup.sh`. Nothing else.
-- **`setup.sh`** — the single entry point for a local checkout. Finds a
+- **`bootstrap.ps1`** (Option A) — pure PowerShell, no prerequisites. Fetches
+  the repo to `~\.win-linux-shell` (git clone, or a zip download if git isn't
+  installed yet) and calls `powershell\install.ps1`.
+- **`bootstrap.sh`** (Option B) — the same idea for Git Bash: checks the repo
+  out to `~/.win-linux-shell`, then execs `setup.sh`.
+- **`setup.sh`** — the entry point for a local checkout (Options B–D). Finds a
   PowerShell interpreter and hands off to `powershell/install.ps1`.
-- **`powershell/install.ps1`** — four idempotent steps:
+- **`powershell/install.ps1`** — five idempotent steps, all reachable from any
+  of the options above:
 
 | # | Step | Notes |
 |---|------|-------|
 | 1 | `winget install Microsoft.PowerShell` | installs / upgrades PowerShell 7 |
-| 2 | Windows Terminal `defaultProfile` → PowerShell 7 | edits only the `defaultProfile` value in `settings.json` (comments and formatting preserved); timestamped backup first |
+| 2 | `winget install Git.Git` | only if `git` is missing — it's what supplies the GNU coreutils; skip and nothing in the "Linux commands" pillar works |
 | 3 | `winget install JanDeDobbeleer.OhMyPosh` | only if `oh-my-posh` is missing |
-| 4 | wire `powershell/profile.ps1` into `$PROFILE` | one managed block in `Documents\PowerShell\profile.ps1`; backed up before any edit |
+| 4 | Windows Terminal `defaultProfile` → PowerShell 7 | edits only the `defaultProfile` value in `settings.json` (comments and formatting preserved); timestamped backup first |
+| 5 | wire `powershell/profile.ps1` into `$PROFILE` | one managed block in `Documents\PowerShell\profile.ps1`; backed up before any edit |
 
-`--theme` / `--gnu-bin` values are validated (`A–Z a–z 0–9 space . _ : \ / -`)
+`-Theme` / `-GnuBin` values are validated (`A–Z a–z 0–9 space . _ : \ / -`)
 before being written into your `$PROFILE`. The installer never elevates, never
 deletes files, and only writes under your user profile.
 
 ### Options
 
+Same flags everywhere; `bootstrap.ps1` and `install.ps1` use PowerShell's
+`-PascalCase` spelling, `bootstrap.sh` / `setup.sh` use `--kebab-case`.
+
 ```bash
 bash setup.sh --theme slim      # oh-my-posh theme name or full path (default: slim)
+bash setup.sh --gnu-bin <path>  # force the GNU coreutils dir (else auto-detected from Git)
 bash setup.sh --no-update       # skip the PowerShell 7 winget step
+bash setup.sh --no-git          # skip installing Git for Windows
 bash setup.sh --no-terminal     # don't touch Windows Terminal settings.json
 bash setup.sh --no-omp          # skip installing oh-my-posh
+bash setup.sh --no-profile      # don't touch your PowerShell $PROFILE
 bash setup.sh --help
 ```
 
@@ -108,8 +150,8 @@ bash setup.sh --help
 
 ## Manual step: Windows Terminal default profile
 
-If step 2 reports it could not patch `settings.json` (locked, non-standard
-install, running under Windows PowerShell 5.1), set it yourself.
+If step 4 reports it could not patch `settings.json` (locked or a non-standard
+install location), set it yourself.
 
 **GUI:** Windows Terminal → `Ctrl+,` → *Startup* → *Default profile* → **PowerShell**
 
@@ -157,8 +199,13 @@ assigns to the PowerShell 7 (`Windows.Terminal.PowershellCore`) profile.
 
 ## Requirements
 
-- **Git for Windows** (provides Git Bash to run `setup.sh`, and the GNU coreutils)
-- **winget** (`App Installer`, preinstalled on Windows 11) — for steps 1 & 3
+- **Windows PowerShell 5.1** (ships with every supported Windows) to run
+  Option A — everything else, including Git for Windows itself, is installed
+  for you from there.
+- **winget** (`App Installer`) to actually install things — preinstalled on
+  Windows 11 and current Windows 10. Without it, `bootstrap.ps1` still fetches
+  the repo and wires up your `$PROFILE`, but PowerShell 7 / Git / oh-my-posh
+  won't auto-install; get `App Installer` from the Microsoft Store first.
 - Windows 10 1809+ / Windows 11
 
 ## Uninstall
@@ -166,7 +213,9 @@ assigns to the PowerShell 7 (`Windows.Terminal.PowershellCore`) profile.
 1. Delete the `# >>> win-linux-shell >>> … <<<` block from
    `Documents\PowerShell\profile.ps1`.
 2. Restore a `settings.json.bak-*` backup if you want the old Terminal default back.
-3. `winget uninstall JanDeDobbeleer.OhMyPosh` (optional).
+3. `winget uninstall JanDeDobbeleer.OhMyPosh` / `winget uninstall Git.Git` (optional
+   — the latter also removes Git Bash and the coreutils this repo unmasks).
+4. Delete `~\.win-linux-shell` (or wherever you cloned it).
 
 ## License
 
