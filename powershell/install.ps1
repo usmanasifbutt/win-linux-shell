@@ -69,13 +69,15 @@ function Assert-Safe($name, $value) {
 Assert-Safe 'Theme'  $Theme
 Assert-Safe 'GnuBin' $GnuBin
 
-function Invoke-Winget([string[]] $Args) {
+# Not named $Args: that's PowerShell's automatic variable, and a parameter with
+# that name is silently empty inside the function, so winget ran with no args.
+function Invoke-Winget([string[]] $WingetArgs) {
     if (-not (Have 'winget')) {
         Warn "winget not found -- install 'App Installer' from the Microsoft Store, then re-run."
         return $false
     }
-    Write-Host "    winget $($Args -join ' ')" -ForegroundColor DarkGray
-    & winget @Args
+    Write-Host "    winget $($WingetArgs -join ' ')" -ForegroundColor DarkGray
+    & winget @WingetArgs
     # 0 = ok ; -1978335189 (0x8A15002B) = 'no applicable upgrade' ; treat as ok
     if ($LASTEXITCODE -in 0, -1978335189, -1978335212) { return $true }
     Warn "winget exited with $LASTEXITCODE (continuing)"
